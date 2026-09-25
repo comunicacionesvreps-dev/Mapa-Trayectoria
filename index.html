@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mapa de mi trayectoria</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Work+Sans:wght@400;500;600&family=Caveat:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#EDE6D6; --paper-dark:#E3DAC5;
+    --ink:#232B3A; --ink-soft:#4A5266;
+    --twine:#8C6E4A;
+    --bar:#232B3A; --bar-text:#F3EEE0;
+    --accent:#3A5A50;
+    --note-1:#F6E7B0; --note-2:#F3C7C7; --note-3:#C9DED2; --note-4:#C7D9E8; --note-5:#E9D2B8;
+    --serif:'Fraunces',Georgia,serif; --sans:'Work Sans',system-ui,sans-serif; --hand:'Caveat',cursive;
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  *{box-sizing:border-box;}
+  html{scroll-padding-top:env(safe-area-inset-top,0px);}
+  html,body{height:100%; margin:0;}
+  body{
+    font-family:var(--sans); background:var(--bar); color:var(--ink);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  header{
+    background:var(--bar); color:var(--bar-text);
+    padding:14px 18px calc(14px + env(safe-area-inset-top,0px)) 18px;
+    display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+    border-bottom:1px solid #3a4257;
+  }
+  h1{
+    font-family:var(--serif); font-weight:600; font-size:1.15rem; margin:0;
+    letter-spacing:.2px; white-space:nowrap;
+  }
+  .hint{ font-size:.82rem; color:#C8CCD8; margin-right:auto; line-height:1.3; max-width:420px; }
+  .toolbar{ display:flex; gap:8px; flex-wrap:wrap; }
+  button{
+    font-family:var(--sans); font-size:.85rem; font-weight:500;
+    border:1px solid #4a5266; background:#2c3547; color:var(--bar-text);
+    padding:8px 14px; border-radius:7px; cursor:pointer; transition:background .15s;
+  }
+  button:hover{ background:#3a4460; }
+  button:active{ transform:translateY(1px); }
+  button.active{ background:var(--accent); border-color:var(--accent); }
+  button:focus-visible{ outline:2px solid #C7D9E8; outline-offset:2px; }
+
+  main{ position:relative; flex:1; overflow:auto; background:var(--paper);
+    background-image:radial-gradient(circle, #00000012 1px, transparent 1.4px);
+    background-size:22px 22px;
+  }
+  #board{ position:relative; width:100%; height:100%; min-width:1400px; min-height:1000px; }
+  svg#lines{ position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  svg#lines line{ stroke:var(--twine); stroke-width:2.5; stroke-linecap:round; pointer-events:stroke; cursor:pointer; }
+  svg#lines line:hover{ stroke:#b33; }
+
+  .sticky{
+    position:absolute; width:170px; min-height:110px;
+    padding:14px 12px 10px; border-radius:2px;
+    box-shadow:0 3px 8px rgba(0,0,0,.18), 0 1px 0 rgba(255,255,255,.4) inset;
+    cursor:grab; font-family:var(--hand); font-size:1.15rem; line-height:1.25;
+    color:#2a2a24; user-select:none;
+  }
+  .sticky.dragging{ cursor:grabbing; z-index:50; box-shadow:0 8px 18px rgba(0,0,0,.28); }
+  .sticky::before{
+    content:''; position:absolute; top:-9px; left:50%; transform:translateX(-50%) rotate(-3deg);
+    width:26px; height:14px; background:#c9c2ab; opacity:.85; border-radius:1px;
+    box-shadow:0 1px 2px rgba(0,0,0,.25);
+  }
+  .sticky[data-color="1"]{ background:var(--note-1); }
+  .sticky[data-color="2"]{ background:var(--note-2); }
+  .sticky[data-color="3"]{ background:var(--note-3); }
+  .sticky[data-color="4"]{ background:var(--note-4); }
+  .sticky[data-color="5"]{ background:var(--note-5); }
+  .sticky[contenteditable]:focus{ outline:2px dashed rgba(0,0,0,.25); outline-offset:3px; }
+  .sticky .del{
+    position:absolute; top:2px; right:4px; font-family:var(--sans); font-size:.7rem;
+    background:none; border:none; color:#6b6b5f; padding:2px 5px; cursor:pointer; border-radius:4px;
+  }
+  .sticky .del:hover{ background:rgba(0,0,0,.08); color:#a02; }
+  .sticky[data-empty="true"]::after{
+    content:'Escribe aquí…'; color:#7a7a68; opacity:.7; font-family:var(--hand); pointer-events:none;
+  }
+
+  .connect-mode .sticky{ cursor:crosshair; }
+  .connect-mode .sticky.picked{ outline:3px solid var(--accent); outline-offset:3px; }
+
+  .empty-msg{
+    position:absolute; top:40%; left:50%; transform:translate(-50%,-50%);
+    font-family:var(--serif); font-size:1.05rem; color:var(--ink-soft); text-align:center; width:320px;
+    pointer-events:none;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Mapa de mi trayectoria</h1>
+  <div class="hint">Doble clic en el tablero crea un hito. Arrástralos donde quieras. Usa "Conectar" para trazar el camino entre dos hitos.</div>
+  <div class="toolbar">
+    <button id="btnConnect">🧵 Conectar</button>
+    <button id="btnClear">🗑 Limpiar</button>
+    <button id="btnExport">⬇ Descargar mapa</button>
+  </div>
+</header>
+<main>
+  <div id="board">
+    <svg id="lines"></svg>
+    <div class="empty-msg" id="emptyMsg">Doble clic en cualquier parte del tablero<br>para colocar tu primer hito.</div>
+  </div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script>
+(function(){
+  const board = document.getElementById('board');
+  const svg = document.getElementById('lines');
+  const emptyMsg = document.getElementById('emptyMsg');
+  const btnConnect = document.getElementById('btnConnect');
+  const btnClear = document.getElementById('btnClear');
+  const btnExport = document.getElementById('btnExport');
+
+  let stickies = {}; // id -> {el,x,y}
+  let connections = []; // {a,b,lineEl}
+  let idSeq = 1, colorSeq = 0;
+  let connectMode = false, picked = null;
+
+  function updateEmpty(){ emptyMsg.style.display = Object.keys(stickies).length ? 'none' : 'block'; }
+
+  function center(el){
+    return { x: el.offsetLeft + el.offsetWidth/2, y: el.offsetTop + el.offsetHeight/2 };
+  }
+
+  function redrawLines(){
+    connections.forEach(c => {
+      const a = center(stickies[c.a].el), b = center(stickies[c.b].el);
+      c.lineEl.setAttribute('x1', a.x); c.lineEl.setAttribute('y1', a.y);
+      c.lineEl.setAttribute('x2', b.x); c.lineEl.setAttribute('y2', b.y);
+    });
+  }
+
+  function removeConnectionsFor(id){
+    connections = connections.filter(c => {
+      if (c.a === id || c.b === id) { c.lineEl.remove(); return false; }
+      return true;
+    });
+  }
+
+  function createSticky(x, y, text){
+    const id = 'n' + (idSeq++);
+    colorSeq = (colorSeq % 5) + 1;
+    const el = document.createElement('div');
+    el.className = 'sticky';
+    el.dataset.color = colorSeq;
+    el.dataset.empty = text ? 'false' : 'true';
+    el.style.left = Math.max(0, x - 85) + 'px';
+    el.style.top = Math.max(0, y - 55) + 'px';
+    el.contentEditable = 'true';
+    el.spellcheck = false;
+    el.textContent = text || '';
+
+    const del = document.createElement('button');
+    del.className = 'del'; del.textContent = '✕'; del.title = 'Eliminar hito';
+    del.addEventListener('click', (e) => {
+      e.stopPropagation();
+      removeConnectionsFor(id);
+      el.remove();
+      delete stickies[id];
+      updateEmpty();
+    });
+    el.appendChild(del);
+
+    el.addEventListener('input', () => {
+      const txt = el.childNodes[0] && el.childNodes[0].nodeType === 3 ? el.textContent.trim() : el.textContent.trim();
+      el.dataset.empty = el.textContent.trim() === '' ? 'true' : 'false';
+    });
+
+    // drag
+    let dragging = false, offX = 0, offY = 0;
+    el.addEventListener('pointerdown', (e) => {
+      if (connectMode) return;
+      if (e.target === del) return;
+      dragging = true; el.classList.add('dragging');
+      offX = e.clientX - el.offsetLeft; offY = e.clientY - el.offsetTop;
+      el.setPointerCapture(e.pointerId);
+    });
+    el.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      el.style.left = Math.max(0, e.clientX - offX) + 'px';
+      el.style.top = Math.max(0, e.clientY - offY) + 'px';
+      redrawLines();
+    });
+    el.addEventListener('pointerup', () => { dragging = false; el.classList.remove('dragging'); });
+
+    // connect mode click
+    el.addEventListener('click', (e) => {
+      if (!connectMode) return;
+      e.preventDefault();
+      if (!picked) {
+        picked = id; el.classList.add('picked');
+      } else if (picked === id) {
+        el.classList.remove('picked'); picked = null;
+      } else {
+        const exists = connections.some(c => (c.a===picked&&c.b===id)||(c.a===id&&c.b===picked));
+        if (!exists) {
+          const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+          svg.appendChild(line);
+          connections.push({ a: picked, b: id, lineEl: line });
+          redrawLines();
+        }
+        stickies[picked].el.classList.remove('picked');
+        picked = null;
+      }
+    });
+
+    board.appendChild(el);
+    stickies[id] = { el, id };
+    updateEmpty();
+    if (!text) setTimeout(() => el.focus(), 30);
+    return el;
+  }
+
+  board.addEventListener('dblclick', (e) => {
+    if (e.target.closest('.sticky')) return;
+    const rect = board.getBoundingClientRect();
+    createSticky(e.clientX - rect.left + board.scrollLeft, e.clientY - rect.top + board.scrollTop);
+  });
+
+  svg.addEventListener('click', (e) => {
+    if (e.target.tagName !== 'line') return;
+    const idx = connections.findIndex(c => c.lineEl === e.target);
+    if (idx > -1) { connections[idx].lineEl.remove(); connections.splice(idx,1); }
+  });
+
+  btnConnect.addEventListener('click', () => {
+    connectMode = !connectMode;
+    btnConnect.classList.toggle('active', connectMode);
+    board.parentElement.classList.toggle('connect-mode', connectMode);
+    if (!connectMode && picked) { stickies[picked].el.classList.remove('picked'); picked = null; }
+  });
+
+  btnClear.addEventListener('click', () => {
+    if (!confirm('¿Borrar todo el mapa? Esta acción no se puede deshacer.')) return;
+    Object.values(stickies).forEach(s => s.el.remove());
+    connections.forEach(c => c.lineEl.remove());
+    stickies = {}; connections = []; picked = null; idSeq = 1; colorSeq = 0;
+    updateEmpty();
+  });
+
+  btnExport.addEventListener('click', async () => {
+    if (Object.keys(stickies).length === 0) { alert('Agrega al menos un hito antes de descargar.'); return; }
+    btnExport.disabled = true; btnExport.textContent = 'Generando…';
+    try {
+      const canvas = await html2canvas(board, { backgroundColor: '#EDE6D6', scale: 2 });
+      canvas.toBlob((blob) => {
+        btnExport.textContent = '⬇ Descargar mapa';
+        btnExport.disabled = false;
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'mapa-trayectoria.png'; a.click();
+        URL.revokeObjectURL(url);
+      }, 'image/png');
+    } catch (err) {
+      btnExport.textContent = '⬇ Descargar mapa'; btnExport.disabled = false;
+      alert('No se pudo generar la imagen.');
+    }
+  });
+
+  updateEmpty();
+})();
+</script>
+</body>
+</html>
